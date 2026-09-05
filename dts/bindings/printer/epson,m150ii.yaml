@@ -1,0 +1,42 @@
+description: |
+  Printer device for the epson M-150II pin printer, use gpio
+
+compatible: "epson,m150ii"
+
+include: [base.yaml]
+# include: [display-controller.yaml]
+
+properties:
+  reset-gpios:
+    type: phandle-array
+    required: true
+    description: one line reste signal form gpio, use for enter an change line
+  motor-gpios:
+    type: phandle-array
+    required: true
+    description: motor control pin, set motor turn alound
+  print-d-gpios:
+    type: phandle-array
+    required: true
+    description: printer pin d,lasta stector
+  print-c-gpios:
+    type: phandle-array
+    required: true
+    description: printer pin c,3rd stector
+  print-b-gpios:
+    type: phandle-array
+    required: true
+    description: printer pin b,2nd stector
+  print-a-gpios:
+    type: phandle-array
+    required: true
+    description: printer pin a,first stector
+  timing-gpios:
+    type: phandle-array
+    required: true
+    description: printer timing signal, use for jage how time can set pin on and take point
+  start-delay:
+    type: int
+    required: false
+    default: 100
+    description: delay for motor stable, ms

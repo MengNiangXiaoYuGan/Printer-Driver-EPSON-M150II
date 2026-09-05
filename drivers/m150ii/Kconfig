@@ -1,0 +1,6 @@
+config EPSON_M150II
+    bool "epson m150ii pin printer"
+    default n
+    depends on GPIO && DISPLAY
+    help
+        Enable epson m150ii pin printer support

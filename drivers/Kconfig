@@ -1,0 +1,2 @@
+rsource "encode/Kconfig"
+rsource "m150ii/Kconfig"

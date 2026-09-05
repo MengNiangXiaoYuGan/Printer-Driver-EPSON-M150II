@@ -1,0 +1,2 @@
+add_subdirectory_ifdef(CONFIG_ENCODE_GPIO encode)
+add_subdirectory_ifdef(CONFIG_EPSON_M150II m150ii)

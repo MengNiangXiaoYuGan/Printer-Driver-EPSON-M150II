@@ -1,0 +1,13 @@
+name: encode-gpio
+build:
+  cmake: .
+  kconfig: Kconfig
+  settings:
+    dts_root: .
+
+name: m150ii
+build:
+  cmake: .
+  kconfig: Kconfig
+  settings:
+   dts_root: .

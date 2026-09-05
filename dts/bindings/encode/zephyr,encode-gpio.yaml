@@ -1,0 +1,33 @@
+description: |
+  Sensor driver for the relative-axis rotary encoder (gpio mode)
+
+compatible: "zephyr,encode-gpio"
+
+properties:
+  a-gpios:
+    type: phandle-array
+    required: true
+    description: A pin for the encoder
+  b-gpios:
+    type: phandle-array
+    required: true
+    description: B pin for the encoder
+  ppr:
+    type: int
+    description: Pulse Per Revolution
+    default: 11
+    required: false
+  spp:
+    type: int
+    description: |
+        Number of steps (stable states) per period
+        1: Full-period mode (default)
+        2: Half-period mode
+        4: Quarter-period mode
+    required: false
+    default: 1
+  # polling-mode:
+  #   type: bool
+  #   description: |
+  #       Do not use interrupt mode (default)
+  #   required: false

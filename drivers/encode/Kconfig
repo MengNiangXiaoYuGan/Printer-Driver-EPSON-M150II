@@ -1,0 +1,7 @@
+config ENCODE_GPIO
+    bool "encode use gpio"
+    default n
+    depends on GPIO
+    depends on SENSOR
+    help
+        Enable sample encode for gpio support

@@ -322,7 +322,7 @@ static int m150ii_printer_write(const struct device *dev,
     k_msgq_purge(&data->res_tri_msgq);
     LOG_DBG("clear res tiger msgq");
     bool tri;
-    while (line < desc->height)
+    for (line = 0; line < desc->height; line++)
     {
         if (k_msgq_get(&data->res_tri_msgq,&tri,K_SECONDS(3)))
         {
@@ -331,7 +331,7 @@ static int m150ii_printer_write(const struct device *dev,
         }
         k_sleep(K_USEC(100));
         k_msgq_purge(&data->tim_tri_msgq);
-        while (row < 96)
+        for (row = 0; row < 96; row++)
         {
             if (k_msgq_get(&data->tim_tri_msgq,&tri,K_SECONDS(1)))
             {
@@ -341,7 +341,7 @@ static int m150ii_printer_write(const struct device *dev,
             uint8_t z = row % 4;
             uint8_t a = row / 4 % 8;
             uint8_t b = row / 24;
-            LOG_DBG("couter z = %d a = %d b = %d",z,a,b);
+            LOG_DBG("line = %d row = %d  couter z = %d a = %d b = %d",line,row,z,a,b);
             uint8_t pin_or_not = ((buff[(z * 3) + b][line] >> a) > 0 ? 1 : 0);
             switch (z)
             {
@@ -400,10 +400,8 @@ static int m150ii_printer_write(const struct device *dev,
                 LOG_ERR("cant not set gpio pin");
                 goto exit;
             }
-            row++;
         }
         /*line form 0 to height*/
-        line++;
     }
     if (k_msgq_get(&data->res_tri_msgq,&tri,K_SECONDS(3)))
     {
@@ -475,33 +473,33 @@ const static DEVICE_API(display, m150ii_printer_driver_api) = {
 };
 
 /*Expansion macro magic*/
-#define M150II_PRINTER_DEFINE(node_id)                                                  \
-    static const struct m150ii_gpio_data m150ii_gpio_data_##node_id = {                 \
+#define M150II_PRINTER_DEFINE(inst)                                                  \
+    static const struct m150ii_gpio_data m150ii_gpio_data_##inst = {                 \
         .pixel_format = PIXEL_FORMAT_MONO01,                                            \
     };                                                                                  \
                                                                                         \
     /*create an instance of the consig struct, populate with DT calues*/                \
-    static const struct m150ii_gpio_config m150ii_gpio_config_##node_id = {             \
-        .motor_c    = GPIO_DT_SPEC_GET(node_id, motor_gpios),                           \
-        .res_d      = GPIO_DT_SPEC_GET(node_id, reset_gpios),                           \
-        .ps_a       = GPIO_DT_SPEC_GET(node_id, print_a_gpios),                         \
-        .ps_b       = GPIO_DT_SPEC_GET(node_id, print_b_gpios),                         \
-        .ps_c       = GPIO_DT_SPEC_GET(node_id, print_c_gpios),                         \
-        .ps_d       = GPIO_DT_SPEC_GET(node_id, print_d_gpios),                         \
-        .tim_d      = GPIO_DT_SPEC_GET(node_id, timing_gpios),                          \
-        .start_delay = DT_PROP_OR(node_id, start_delay, 500),                           \
+    static const struct m150ii_gpio_config m150ii_gpio_config_##inst = {             \
+        .motor_c    = GPIO_DT_SPEC_INST_GET(inst, motor_gpios),                           \
+        .res_d      = GPIO_DT_SPEC_INST_GET(inst, reset_gpios),                           \
+        .ps_a       = GPIO_DT_SPEC_INST_GET(inst, print_a_gpios),                         \
+        .ps_b       = GPIO_DT_SPEC_INST_GET(inst, print_b_gpios),                         \
+        .ps_c       = GPIO_DT_SPEC_INST_GET(inst, print_c_gpios),                         \
+        .ps_d       = GPIO_DT_SPEC_INST_GET(inst, print_d_gpios),                         \
+        .tim_d      = GPIO_DT_SPEC_INST_GET(inst, timing_gpios),                          \
+        .start_delay = DT_INST_PROP_OR(inst, start_delay, 500),                           \
     };                                                                                  \
                                                                                         \
     /*create a device instance form devicetree node indetifier and*/                    \
     /*registers the init fuction to run during boot*/                                   \
-    DEVICE_DT_DEFINE(node_id,                                                           \
+    DEVICE_DT_INST_DEFINE(inst,                                                           \
                                 &m150ii_printer_init,                                   \
                                 NULL,                                                   \
-                                &m150ii_gpio_data_##node_id,                            \
-                                &m150ii_gpio_config_##node_id,                          \
+                                &m150ii_gpio_data_##inst,                            \
+                                &m150ii_gpio_config_##inst,                          \
                                 POST_KERNEL,                                            \
                                 CONFIG_DISPLAY_INIT_PRIORITY,                           \
                                 &m150ii_printer_driver_api);
 
 /*this micro use for init and define all strcut from DT*/
-DT_FOREACH_STATUS_OKAY(epson_m150ii, M150II_PRINTER_DEFINE)
+DT_INST_FOREACH_STATUS_OKAY(M150II_PRINTER_DEFINE)

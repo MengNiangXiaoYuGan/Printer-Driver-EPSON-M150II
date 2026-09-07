@@ -209,6 +209,7 @@ static int m150ii_printer_init(const struct device *dev)
     }
     LOG_DBG("EXIT callback add ok");
     /*config ok*/
+    LOG_INF("Printer Init complet");
     return 0;
 }
 
@@ -250,47 +251,34 @@ static int m150ii_printer_write(const struct device *dev,
     uint8_t buff[12][desc->height];
     struct m150ii_gpio_data *data = (struct m150ii_gpio_data *)dev->data;
     const struct m150ii_gpio_config *cfg = (const struct m150ii_gpio_config *)dev->config;
-    switch (data->pixel_format)
-    {
-    case PIXEL_FORMAT_MONO01:
-        /*SET ALL BUFF 0*/
-        memset(buff,0x00,sizeof(buff));
-        LOG_DBG("set buff 0");
-        break;
-    case PIXEL_FORMAT_MONO10:
-        /*set all buff 0xff*/
-        memset(buff,0xff,sizeof(buff));
-        LOG_DBG("set buff 1");
-        break;
-    default:
-        LOG_ERR("pixel format not init");
-        return -ENOTSUP;
-        break;
-    }
+    memset(buff,0x00,sizeof(buff));
+    LOG_DBG("set buff 0");
     /*fill buf data to buff*/
     /*x form 0 and y from zero*/
     uint8_t *buf_prt = (uint8_t *)buf;
-    for (uint16_t buff_y = y; buff_y < desc->height; buff_y++)
+    for (uint16_t buff_y = 0; buff_y < desc->height; buff_y++)
     {
-        for (uint8_t buff_x = x / 8; buff_x < desc->pitch / 8; buff_x++)
+        for (uint8_t buff_x = x / 8; buff_x < desc->width / 8; buff_x++)
         {
-            switch (data->pixel_format)
-            {
-            case PIXEL_FORMAT_MONO01:
-                buff[x][y] = *buf_prt;
-                break;
-            case PIXEL_FORMAT_MONO10:
-                buff[x][y] = !*buf_prt;
-                break;
-            default:
-                LOG_ERR("pixel format not init");
-                return -ENOTSUP;
-                break;
-            }
+            buff[buff_x][buff_y] = *buf_prt;
             buf_prt++;
         }
     }
     LOG_DBG("buff fill ready");
+    /* this profram only use for debug , it will outpu all buff, read and find where is error*/
+    // for (int i = 0; i < desc->height; i++)
+    // {
+    //     printk("line[%d]    ",i);
+    //     for (int j = 0; j < 12; j++)
+    //     {
+    //         printk(" 0X%02X ",buff[i][j]);
+    //         k_msleep(10);
+    //     }
+    //     printk("\n");
+    // }
+    // while (1)k_msleep(10);
+    /*********************************************************************************** */
+    
     /*regest exin callback*/
     ret = gpio_pin_interrupt_configure_dt(&cfg->res_d,
                                 GPIO_INT_EDGE_TO_ACTIVE);
@@ -313,6 +301,20 @@ static int m150ii_printer_write(const struct device *dev,
     LOG_DBG("gpio interrupt configure ok");
     /*statrt printer*/
     int16_t line = 0,row = 0;
+    uint16_t format = 0;
+    switch (data->pixel_format)
+    {
+    case PIXEL_FORMAT_MONO01:
+        format = 1;
+        break;
+    case PIXEL_FORMAT_MONO10:
+        format = 0;
+        break;
+    default:
+        LOG_ERR("pixel format steup error");
+        goto exit;
+        break;
+    }
     ret = gpio_pin_set_dt(&cfg->motor_c,1);
     if (ret)
     {
@@ -337,7 +339,7 @@ static int m150ii_printer_write(const struct device *dev,
         while (!data->res_tri)
         {
             /*time out init*/
-            k_sleep(K_USEC(10));
+            k_sleep(K_USEC(5));
         }
         k_sleep(K_USEC(cfg->zero_tri_delay));    /*ENTER DELAY*/
         data->timing_tri = false;
@@ -345,16 +347,19 @@ static int m150ii_printer_write(const struct device *dev,
         {
             uint8_t z = row % 4;
             uint8_t a = row / 4 % 8;
-            uint8_t b = row / 24;
-            LOG_DBG("line = %d row = %d  couter z = %d a = %d b = %d",line,row,z,a,b);
-            uint8_t pin_or_not = (((buff[(z * 3) + b][line] >> a) & 0x1) > 0 ? 1 : 0);
-            // uint8_t pin_or_not = 1;
+            uint8_t b = row / 32;
+            /*all firme is big bit*/
+            /*msb first*/
+            uint8_t pin_or_not = (((buff[(z * 3) + b][line] >> (7 - a)) & 0x1) == format ? 1 : 0);
+            /*if you wont to use lsb*/
+            // uint8_t pin_or_not = (((buff[(z * 3) + b][line] >> a) & 0x1) > 0 ? 1 : 0);
+            LOG_DBG("pin_or_not = %d line = %d row = %d z = %d b = %d a = %d",pin_or_not,line,row,z,b,a);
 #if !defined(CONFIG_PRINTER_PREDICTION_TIMING)
             data->timing_tri = false;
             while (!data->timing_tri)
             {
                 /*time out init*/
-                k_sleep(K_USEC(10));
+                k_sleep(K_USEC(5));
             }
 #endif // 
             switch (z)
@@ -393,6 +398,13 @@ static int m150ii_printer_write(const struct device *dev,
             k_sleep(data->printer_delay);
 #endif
         }
+        /*one line last point*/
+        data->timing_tri = false;
+        while (!data->timing_tri)
+        {
+            /*time out init*/
+            k_sleep(K_USEC(10));
+        }
         /*line form 0 to height*/
     }
     while (!data->res_tri)
@@ -411,8 +423,6 @@ static int m150ii_printer_write(const struct device *dev,
                                 GPIO_INT_DISABLE);
     gpio_pin_interrupt_configure_dt(&cfg->tim_d,
                                 GPIO_INT_DISABLE);
-    // k_msgq_cleanup(&data->res_tri_msgq);
-    // k_msgq_cleanup(&data->tim_tri_msgq);
     return ret;
 }
 

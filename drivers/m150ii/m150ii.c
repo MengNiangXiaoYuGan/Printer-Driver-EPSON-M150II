@@ -18,7 +18,7 @@
 /***************************************************************************************************************************************************************** */
 /*define and regiest*/
 /*enable logging at CONFIG_EPSON_M150II_LOG_LEVEL*/
-LOG_MODULE_REGISTER(M150II, 1);
+LOG_MODULE_REGISTER(M150II, CONFIG_EPSON_M150II_LOG_LEVEL);
 
 /*define an private function*/
 struct m150ii_gpio_config{

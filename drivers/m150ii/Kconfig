@@ -20,6 +20,41 @@ config PRINTER_PREDICTION_TIMING
 	----------------|         |---------|         |---------|         |---------|
 	predict signal  triger              triger              triger
 	this option only use your timing detector wave not good but you wont to check
-    program, actury, this option have to mach problam, if can do not use it"
+	program, actury, this option have to mach problam, if can do not use it"
+
+choice "EPSON_M150II_LOG_LEVEL_CHOICE"
+	prompt "Max compiled-in log level for Epson m150 ii micro dot printer"
+	default EPSON_M150II_LOG_LEVEL_DEFAULT
+	depends on LOG
+
+config EPSON_M150II_LOG_LEVEL_NONE
+	bool "none"
+
+config EPSON_M150II_LOG_LEVEL_ERR
+	bool "Error"
+
+config EPSON_M150II_LOG_LEVEL_WRN
+	bool "Warning"
+
+config EPSON_M150II_LOG_LEVEL_INF
+	bool "Info"
+
+config EPSON_M150II_LOG_LEVEL_DBG
+	bool "Debug"
+
+config EPSON_M150II_LOG_LEVEL_DEFAULT
+	bool "Default"
+
+endchoice
+
+config EPSON_M150II_LOG_LEVEL
+	int
+	depends on LOG
+	default 0 if EPSON_M150II_LOG_LEVEL_NONE
+	default 1 if EPSON_M150II_LOG_LEVEL_ERR
+	default 2 if EPSON_M150II_LOG_LEVEL_WRN
+	default 3 if EPSON_M150II_LOG_LEVEL_INF
+	default 4 if EPSON_M150II_LOG_LEVEL_DBG
+	default LOG_DEFAULT_LEVEL if EPSON_M150II_LOG_LEVEL_DEFAULT
 
 endif

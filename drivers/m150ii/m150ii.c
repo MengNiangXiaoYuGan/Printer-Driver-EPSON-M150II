@@ -18,7 +18,7 @@
 /***************************************************************************************************************************************************************** */
 /*define and regiest*/
 /*enable logging at CONFIG_EPSON_M150II_LOG_LEVEL*/
-LOG_MODULE_REGISTER(M150II, 4);
+LOG_MODULE_REGISTER(M150II, 1);
 
 /*define an private function*/
 struct m150ii_gpio_config{
@@ -31,10 +31,15 @@ struct m150ii_gpio_data{
     /*set for timing trigger*/
     const struct device *dev;
     struct gpio_callback res_d_callback,tim_d_callback;
-    /*use for msgq*/
-    struct k_msgq res_tri_msgq,tim_tri_msgq;
-    char res_tri_msgq_buff[sizeof(bool)];
-    char tim_tri_msgq_buff[sizeof(bool)];
+    /*use for bool*/
+    bool res_tri;
+    /*use for thread*/
+#ifdef CONFIG_PRINTER_PREDICTION_TIMING
+    k_timeout_t printer_delay;
+    uint16_t last_time;
+#else
+    bool timing_tri;
+#endif
 };
 
 /******************************************************************************************************************************************************************* */
@@ -51,15 +56,7 @@ static void m150ii_printer_res_d_callback(const struct device *dev,
         CONTAINER_OF(cb, struct m150ii_gpio_data, res_d_callback);
     ARG_UNUSED(pins);
     ARG_UNUSED(dev);
-    bool tri = 1;
-    if (k_msgq_put(&data->res_tri_msgq,&tri,K_NO_WAIT))
-    {
-        /*may be your device so slow ,you have to change a new fast mcu*/
-        /*may be your printer motor rote rade so fast, you may be lower you motor voltage*/
-        LOG_DBG("res detector buff full");
-        k_msgq_purge(&data->res_tri_msgq);
-        k_msgq_put(&data->res_tri_msgq,&tri,K_NO_WAIT);
-    }
+    data->res_tri = true;
 }
 
 /*
@@ -73,15 +70,24 @@ static void m150ii_printer_timing_d_callback(const struct device *dev,
         CONTAINER_OF(cb, struct m150ii_gpio_data, tim_d_callback);
     ARG_UNUSED(pins);
     ARG_UNUSED(dev);
-    bool tri = 1;
-    if (k_msgq_put(&data->tim_tri_msgq,&tri,K_NO_WAIT))
+#ifdef CONFIG_PRINTER_PREDICTION_TIMING
+    /*test 3 use edeg to define 1/2 timing*/
+    uint16_t that_time = sys_clock_tick_get();
+    int64_t time_delta = 0;
+    if (that_time > data->last_time)
     {
-        /*may be your device so slow ,you have to change a new fast mcu*/
-        /*may be your printer motor rote rade so fast, you may be lower you motor voltage*/
-        LOG_DBG("timing detector buff full");
-        k_msgq_purge(&data->tim_tri_msgq);
-        k_msgq_put(&data->tim_tri_msgq,&tri,K_NO_WAIT);
+        time_delta = that_time - data->last_time;
     }
+    else
+    {
+        time_delta = (UINT64_MAX - data->last_time) + that_time;
+    }
+    time_delta /= 2;
+    data->printer_delay = K_TICKS(time_delta);
+    data->last_time = that_time;
+#else
+    data->timing_tri = true;
+#endif
 }
 
 /*********************************************************************************************************************************************************************************** */
@@ -285,20 +291,6 @@ static int m150ii_printer_write(const struct device *dev,
         }
     }
     LOG_DBG("buff fill ready");
-    /*init msgq*/
-    k_msgq_init(&data->res_tri_msgq,data->res_tri_msgq_buff,sizeof(bool),1);
-    // if (ret) 
-    // {
-    //     LOG_ERR("no mem to create msgq error code: %d",ret);
-    //     goto exit;
-    // }
-    k_msgq_init(&data->tim_tri_msgq,data->res_tri_msgq_buff,sizeof(bool),1);
-    // if (ret)
-    // {
-    //     LOG_ERR("no mem to create msgq error code: %d",ret);
-    //     goto exit;
-    // }
-    LOG_DBG("msgq init ok");
     /*regest exin callback*/
     ret = gpio_pin_interrupt_configure_dt(&cfg->res_d,
                                 GPIO_INT_EDGE_TO_ACTIVE);
@@ -308,7 +300,11 @@ static int m150ii_printer_write(const struct device *dev,
         goto exit;
     }
     ret = gpio_pin_interrupt_configure_dt(&cfg->tim_d,
+#ifdef CONFIG_PRINTER_PREDICTION_TIMING
+                                GPIO_INT_EDGE_TO_ACTIVE);
+#else
                                 GPIO_INT_EDGE_BOTH);
+#endif
     if(ret) 
     {
         LOG_ERR("gpio timing interrrupt configure faile ,code %d",ret);
@@ -324,31 +320,43 @@ static int m150ii_printer_write(const struct device *dev,
         goto exit;
     }
     LOG_DBG("set motor on");
-    k_sleep(K_MSEC(cfg->start_delay));
-    k_msgq_purge(&data->res_tri_msgq);
+    k_sleep(K_MSEC(200));/*STATRT DELAY*/
     LOG_DBG("clear res tiger msgq");
-    bool tri;
     for (line = 0; line < desc->height; line++)
     {
-        if (k_msgq_get(&data->res_tri_msgq,&tri,K_SECONDS(3)))
+        ret |= gpio_pin_set_dt(&cfg->ps_a,0);
+        ret |= gpio_pin_set_dt(&cfg->ps_b,0);
+        ret |= gpio_pin_set_dt(&cfg->ps_c,0);
+        ret |= gpio_pin_set_dt(&cfg->ps_d,0);
+        if (ret)
         {
-            LOG_ERR("can not detector res signal");
+            LOG_ERR("cant not set gpio pin");
             goto exit;
         }
-        k_sleep(K_USEC(100));
-        k_msgq_purge(&data->tim_tri_msgq);
+        data->res_tri = false;
+        while (!data->res_tri)
+        {
+            /*time out init*/
+            k_sleep(K_USEC(10));
+        }
+        k_sleep(K_USEC(20));    /*ENTER DELAY*/
+        data->timing_tri = false;
         for (row = 0; row < 96; row++)
         {
-            if (k_msgq_get(&data->tim_tri_msgq,&tri,K_SECONDS(1)))
-            {
-                LOG_ERR("can not detector timing signal");
-                goto exit;
-            }
             uint8_t z = row % 4;
             uint8_t a = row / 4 % 8;
             uint8_t b = row / 24;
             LOG_DBG("line = %d row = %d  couter z = %d a = %d b = %d",line,row,z,a,b);
-            uint8_t pin_or_not = (((buff[(z * 3) + b][line] >> a) & 0x1) > 0 ? 1 : 0);
+            // uint8_t pin_or_not = (((buff[(z * 3) + b][line] >> a) & 0x1) > 0 ? 1 : 0);
+            uint8_t pin_or_not = 1;
+#if !defined(CONFIG_PRINTER_PREDICTION_TIMING)
+            data->timing_tri = false;
+            while (!data->timing_tri)
+            {
+                /*time out init*/
+                k_sleep(K_USEC(10));
+            }
+#endif // 
             switch (z)
             {
             case 0:
@@ -372,32 +380,25 @@ static int m150ii_printer_write(const struct device *dev,
             case 3:
                 gpio_pin_set_dt(&cfg->ps_a,0);
                 gpio_pin_set_dt(&cfg->ps_b,0);
-                gpio_pin_set_dt(&cfg->ps_c,pin_or_not);
-                gpio_pin_set_dt(&cfg->ps_d,0);
+                gpio_pin_set_dt(&cfg->ps_c,0);
+                gpio_pin_set_dt(&cfg->ps_d,pin_or_not);
                 break;
             default:
                 LOG_ERR("math error, check program");
                 goto exit;
                 break;
             }
-            /*delay time*/
-            k_sleep(K_USEC(600));
-            ret |= gpio_pin_set_dt(&cfg->ps_a,0);
-            ret |= gpio_pin_set_dt(&cfg->ps_b,0);
-            ret |= gpio_pin_set_dt(&cfg->ps_c,0);
-            ret |= gpio_pin_set_dt(&cfg->ps_d,0);
-            if (ret)
-            {
-                LOG_ERR("cant not set gpio pin");
-                goto exit;
-            }
+            /*delay time until next triger*/
+#ifdef CONFIG_PRINTER_PREDICTION_TIMING
+            k_sleep(data->printer_delay);
+#endif
         }
         /*line form 0 to height*/
     }
-    if (k_msgq_get(&data->res_tri_msgq,&tri,K_SECONDS(3)))
+    while (!data->res_tri)
     {
-        LOG_ERR("can not detector res signal");
-        goto exit;
+        /*time out init*/
+        k_sleep(K_USEC(10));
     }
     /*clean handle*/
     exit:
@@ -410,8 +411,8 @@ static int m150ii_printer_write(const struct device *dev,
                                 GPIO_INT_DISABLE);
     gpio_pin_interrupt_configure_dt(&cfg->tim_d,
                                 GPIO_INT_DISABLE);
-    k_msgq_cleanup(&data->res_tri_msgq);
-    k_msgq_cleanup(&data->tim_tri_msgq);
+    // k_msgq_cleanup(&data->res_tri_msgq);
+    // k_msgq_cleanup(&data->tim_tri_msgq);
     return ret;
 }
 
@@ -478,7 +479,7 @@ const static DEVICE_API(display, m150ii_printer_driver_api) = {
         .ps_c       = GPIO_DT_SPEC_INST_GET(inst, print_c_gpios),                       \
         .ps_d       = GPIO_DT_SPEC_INST_GET(inst, print_d_gpios),                       \
         .tim_d      = GPIO_DT_SPEC_INST_GET(inst, timing_gpios),                        \
-        .start_delay = DT_INST_PROP_OR(inst, start_delay, 500),                         \
+        .start_delay = DT_INST_PROP_OR(inst, start_delay, 50),                          \
     };                                                                                  \
                                                                                         \
     /*create a device instance form devicetree node indetifier and*/                    \

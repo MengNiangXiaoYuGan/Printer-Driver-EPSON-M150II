@@ -1,6 +1,25 @@
-config EPSON_M150II
-    bool "epson m150ii pin printer"
-    default n
-    depends on GPIO && DISPLAY
-    help
-        Enable epson m150ii pin printer support
+menuconfig EPSON_M150II
+	bool "epson m150ii pin printer"
+	default n
+	depends on GPIO && DISPLAY
+	help
+	  Enable epson m150ii printer support
+if EPSON_M150II
+
+config PRINTER_PREDICTION_TIMING
+	bool "printer timing use singel edge predict timing"
+	default n
+	help 
+	"Enable this use active logic edge to predict mid timing,like
+	                |-------------|                         |-------------|
+	                |             |                         |             |
+	----------------|             |-------------------------|             |-----
+	rever singnal   simple time                             simple time
+	                |---------|         |---------|         |---------|         |
+	                |         |         |         |         |         |         |
+	----------------|         |---------|         |---------|         |---------|
+	predict signal  triger              triger              triger
+	this option only use your timing detector wave not good but you wont to check
+    program, actury, this option have to mach problam, if can do not use it"
+
+endif

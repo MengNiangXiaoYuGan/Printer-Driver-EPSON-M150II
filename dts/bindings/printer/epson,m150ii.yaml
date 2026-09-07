@@ -38,5 +38,11 @@ properties:
   start-delay:
     type: int
     required: false
-    default: 100
-    description: delay for motor stable, ms
+    default: 50
+    description: when motor enable, delay this time for motor stable, ms
+  zero-triger-delay:
+    type: int
+    required: false
+    default: 20
+    description: delay of enter to first dot when one line complete, if print thing too left ,add this value, right --, us
+  

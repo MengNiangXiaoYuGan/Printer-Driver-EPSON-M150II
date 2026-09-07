@@ -23,7 +23,7 @@ LOG_MODULE_REGISTER(M150II, CONFIG_EPSON_M150II_LOG_LEVEL);
 /*define an private function*/
 struct m150ii_gpio_config{
     struct gpio_dt_spec res_d,motor_c,ps_d,ps_c,ps_b,ps_a,tim_d;
-    const int start_delay;
+    const int start_delay,zero_tri_delay;
 };
 struct m150ii_gpio_data{
     /*use for privare and chansmit data*/
@@ -320,7 +320,7 @@ static int m150ii_printer_write(const struct device *dev,
         goto exit;
     }
     LOG_DBG("set motor on");
-    k_sleep(K_MSEC(200));/*STATRT DELAY*/
+    k_sleep(K_MSEC(cfg->start_delay));/*STATRT DELAY*/
     LOG_DBG("clear res tiger msgq");
     for (line = 0; line < desc->height; line++)
     {
@@ -339,7 +339,7 @@ static int m150ii_printer_write(const struct device *dev,
             /*time out init*/
             k_sleep(K_USEC(10));
         }
-        k_sleep(K_USEC(20));    /*ENTER DELAY*/
+        k_sleep(K_USEC(cfg->zero_tri_delay));    /*ENTER DELAY*/
         data->timing_tri = false;
         for (row = 0; row < 96; row++)
         {
@@ -347,8 +347,8 @@ static int m150ii_printer_write(const struct device *dev,
             uint8_t a = row / 4 % 8;
             uint8_t b = row / 24;
             LOG_DBG("line = %d row = %d  couter z = %d a = %d b = %d",line,row,z,a,b);
-            // uint8_t pin_or_not = (((buff[(z * 3) + b][line] >> a) & 0x1) > 0 ? 1 : 0);
-            uint8_t pin_or_not = 1;
+            uint8_t pin_or_not = (((buff[(z * 3) + b][line] >> a) & 0x1) > 0 ? 1 : 0);
+            // uint8_t pin_or_not = 1;
 #if !defined(CONFIG_PRINTER_PREDICTION_TIMING)
             data->timing_tri = false;
             while (!data->timing_tri)
@@ -480,6 +480,7 @@ const static DEVICE_API(display, m150ii_printer_driver_api) = {
         .ps_d       = GPIO_DT_SPEC_INST_GET(inst, print_d_gpios),                       \
         .tim_d      = GPIO_DT_SPEC_INST_GET(inst, timing_gpios),                        \
         .start_delay = DT_INST_PROP_OR(inst, start_delay, 50),                          \
+        .zero_tri_delay = DT_INST_PROP_OR(inst, zero_tiger_delay, 20)                   \
     };                                                                                  \
                                                                                         \
     /*create a device instance form devicetree node indetifier and*/                    \

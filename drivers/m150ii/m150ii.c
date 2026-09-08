@@ -343,6 +343,12 @@ static int m150ii_printer_write(const struct device *dev,
         LOG_ERR("drow boundary beyond page size, x = %d, y = %d,width = %d",x,y,desc->width);
         return -ENOTSUP;
     }
+    /*verfy buff size and x width*/
+    if (desc->width == 0 || desc->buf_size == 0)
+    {
+        LOG_ERR("buff can not empty,or width is 0, width = %d, buf_size = %d",desc->width, desc->buf_size);
+        return -ENOTSUP;
+    }
     LOG_DBG("data check ok");
     struct m150ii_gpio_data *data = (struct m150ii_gpio_data *)dev->data;
     const struct m150ii_gpio_config *cfg = (const struct m150ii_gpio_config *)dev->config;
@@ -524,23 +530,11 @@ static int m150ii_printer_set_pixel_format(const struct device *dev,
     return 0;
 }
 
-/*
-    @brief this function use for set printer pick pepor out a litte bit
-            do nothing
-    @param
-    @return
-*/
-int m150ii_printer_clear (const struct device *dev)
-{
-    return 0;
-}
-
 /***************************************************************************************************************************************************************** */
 /*api bindding*/
 const static DEVICE_API(display, m150ii_printer_driver_api) = {
     .write = m150ii_printer_write,
     .set_pixel_format = m150ii_printer_set_pixel_format,
-    .clear = m150ii_printer_clear,
 };
 
 /*Expansion macro magic*/

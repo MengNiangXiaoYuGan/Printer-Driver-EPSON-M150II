@@ -213,12 +213,102 @@ static int m150ii_printer_init(const struct device *dev)
     return 0;
 }
 
+/*
+    @brief this fuction use for check triger time out
+    @param time_out triger
+    @return 0 for sussec
+            -ETIMEDOUT for timeout
+*/
+static inline int check_triger_timeout (bool *triger_ptr)
+{
+    long couter = 0;
+    *triger_ptr = false;
+    while (!*triger_ptr)
+    {
+        /*time out init*/
+        k_sleep(K_USEC(5));
+        couter++;
+        /*one seconed timeout*/
+        if (couter > 2e5)
+        {
+            LOG_ERR("check triger time out");
+            return -ETIMEDOUT;
+        }
+    }
+    return 0;
+}
+
+/*
+    @brief this function use for get buff off a coodinate form offset
+    @details
+        when buff not global, we have to face cut a small area form all page
+        --------------------------------------
+        --------------+++++++++++++++---------
+        --------------------------------------
+        in that time, program will check where x coodinate here, and how offset
+        buff use, to get right bit print
+    @param
+        x_coordinate  x axis coordinate
+        x_offset      x axis coordinate of buff zero
+        y_coordinate  y axis coordinate
+        y_offset      y axis coordinate of buff zero
+        buff_width    one line buff width (bytes)
+        buff_prt      buff point
+    @return
+        false   not to pin
+        true    pin
+*/
+static inline bool check_buff_bit (uint8_t x_coordinate, uint8_t x_offset, uint16_t y_coordinate, uint16_t y_offset, const uint8_t buff_width, uint8_t *buff_ptr)
+{
+    /*not check buff beyond boundary, if beyond ,system will crash*/
+    uint8_t xs = x_coordinate - x_offset;
+    uint16_t ys = y_coordinate - y_offset;
+
+    /*all firme is Big-endian*/
+    uint8_t bit_offset = 7 - (xs % 8);
+    /*if won to use low byte first*/
+    // uint8_t bit_offset = xs % 8;
+    /*buff coordinate equal buff_ptr [(ys * buff_width) + (xs / 8)] >> (bit offset)*/
+    if (buff_ptr[((ys * buff_width) + (xs / 8))] >> bit_offset & 0x1)
+    {
+        return true;
+    }
+    return false;
+}
+
 /********************************************************************************************************************************************************************* */
 /*API Fnction*/
 /*
     @brief this function use for write buff to printer ,this diffrent to nomal display
             it cant replace drowing area
             all write will drow new area below laset drow,
+    @details
+            there are some diffrent to nomall display fuction, dot printer is an creent
+            printer, it mean you can not use Partial refresh to this "screen"
+            every use write function will "create" a new screen to use
+            so, the x 0 and y 0 not fix, a simple page, jues like this
+
+                            0,0             x(buff zero)          x+width             95
+                                ---------------------------------------------------------
+                                ---------------------------------------------------------
+                                ---------------------------------------------------------
+                 y(buff zero)   ------------++++++++++++++++++++++++++-------------------
+                                ------------++++++++++++++++++++++++++-------------------
+                                ------------++++++++++++++++++++++++++-------------------
+                                ------------++++++++++++++++++++++++++-------------------
+                                ------------++++++++++++++++++++++++++-------------------
+            buf_size/(pitch/8)  ------------++++++++++++++++++++++++++-------------------
+                                ---------------------------------------------------------
+                                ---------------------------------------------------------
+                     y+height   ---------------------------------------------------------
+
+            the buff have to align to 8bit, but x or width or both dos not align that
+            in this situation, desc->pitch must be align to 8bit, one line buff size 
+            use this to count.
+            in this case, line num is desc->buf_size/pitch/8, printer will start form
+            0,0 ,but user can use buff smaller then all page
+            such as dorw area width is 15 pixel,not align to 8bit,but buff must use uint_8
+            so, desc->pich must be set to 16, to mark the oneline buff have 2 bytes
     @param
 
     @return
@@ -232,54 +322,29 @@ static int m150ii_printer_write(const struct device *dev,
     /*check data ok*/
     LOG_DBG("START write and driver printer use");
     int ret = 0;
-    if (x && x % 8)
+    /*pitch must be align 8 and bigger than width*/
+    if (desc->pitch % 8 || desc->pitch < desc->width)
     {
-        LOG_ERR("pxiel x %d ilegal, x have to algin to 8",x);
+        LOG_ERR("drow desc error, pitch illegal, pitch = %d, widtch = %d",desc->pitch,desc->width);
         return -ENOTSUP;
     }
+    /*whidth and pitch not bigger then max cow*/
     if (desc->width > 96 || desc->pitch > 96)
     {
         LOG_ERR("witch %d or pitch %d can not use",desc->width,desc->pitch);
         return -ENOTSUP;
     }
-    if (desc->width % 8 && desc->pitch % 8)
+    /*cow drow boundary can not beyond page size*/
+    if (x < 0 || y < 0 || x + desc->width > 96)
     {
-        LOG_ERR("witch %d or pitch %d not aligin 8",desc->width,desc->pitch);
+        LOG_ERR("drow boundary beyond page size, x = %d, y = %d,width = %d",x,y,desc->width);
+        return -ENOTSUP;
     }
     LOG_DBG("data check ok");
-    /*create new data buff*/
-    uint8_t buff[12][desc->height];
     struct m150ii_gpio_data *data = (struct m150ii_gpio_data *)dev->data;
     const struct m150ii_gpio_config *cfg = (const struct m150ii_gpio_config *)dev->config;
-    memset(buff,0x00,sizeof(buff));
-    LOG_DBG("set buff 0");
-    /*fill buf data to buff*/
-    /*x form 0 and y from zero*/
-    uint8_t *buf_prt = (uint8_t *)buf;
-    for (uint16_t buff_y = 0; buff_y < desc->height; buff_y++)
-    {
-        for (uint8_t buff_x = x / 8; buff_x < desc->width / 8; buff_x++)
-        {
-            buff[buff_x][buff_y] = *buf_prt;
-            buf_prt++;
-        }
-    }
-    LOG_DBG("buff fill ready");
-    /* this profram only use for debug , it will outpu all buff, read and find where is error*/
-    // for (int i = 0; i < desc->height; i++)
-    // {
-    //     printk("line[%d]    ",i);
-    //     for (int j = 0; j < 12; j++)
-    //     {
-    //         printk(" 0X%02X ",buff[i][j]);
-    //         k_msleep(10);
-    //     }
-    //     printk("\n");
-    // }
-    // while (1)k_msleep(10);
-    /*********************************************************************************** */
     
-    /*regest exin callback*/
+    /*regest gpio external intrrput callback*/
     ret = gpio_pin_interrupt_configure_dt(&cfg->res_d,
                                 GPIO_INT_EDGE_TO_ACTIVE);
     if(ret) 
@@ -301,7 +366,12 @@ static int m150ii_printer_write(const struct device *dev,
     LOG_DBG("gpio interrupt configure ok");
     /*statrt printer*/
     int16_t line = 0,row = 0;
-    uint16_t format = 0;
+    uint8_t format = 0;
+    /*init buf ptr*/
+    uint8_t *buf_ptr = (uint8_t *)buf;
+    /*get print buf lin num*/
+    const uint8_t cow_num = desc->pitch / 8;
+    const uint16_t line_num = desc->buf_size / cow_num;
     switch (data->pixel_format)
     {
     case PIXEL_FORMAT_MONO01:
@@ -324,8 +394,11 @@ static int m150ii_printer_write(const struct device *dev,
     LOG_DBG("set motor on");
     k_sleep(K_MSEC(cfg->start_delay));/*STATRT DELAY*/
     LOG_DBG("clear res tiger msgq");
-    for (line = 0; line < desc->height; line++)
+    for (line = 0; line < y + desc->height; line++)
     {
+        /*in one line end, check all pin must take back, otherwise, pin will swipe across the paper, then break it*/
+        /*it also will consumes a lot of current*/
+        /*so, check it, very very important*/
         ret |= gpio_pin_set_dt(&cfg->ps_a,0);
         ret |= gpio_pin_set_dt(&cfg->ps_b,0);
         ret |= gpio_pin_set_dt(&cfg->ps_c,0);
@@ -335,32 +408,33 @@ static int m150ii_printer_write(const struct device *dev,
             LOG_ERR("cant not set gpio pin");
             goto exit;
         }
-        data->res_tri = false;
-        while (!data->res_tri)
-        {
-            /*time out init*/
-            k_sleep(K_USEC(5));
-        }
+        if (check_triger_timeout(&data->res_tri))goto exit;
         k_sleep(K_USEC(cfg->zero_tri_delay));    /*ENTER DELAY*/
-        data->timing_tri = false;
         for (row = 0; row < 96; row++)
         {
+            uint8_t pin_or_not = 0;
+            /*line is one by one working, but cow dosen*/
+            /*so, for use not buff use, we must be check where pin x coodinate now*/
             uint8_t z = row % 4;
-            uint8_t a = row / 4 % 8;
-            uint8_t b = row / 32;
-            /*all firme is big bit*/
-            /*msb first*/
-            uint8_t pin_or_not = (((buff[(z * 3) + b][line] >> (7 - a)) & 0x1) == format ? 1 : 0);
-            /*if you wont to use lsb*/
-            // uint8_t pin_or_not = (((buff[(z * 3) + b][line] >> a) & 0x1) > 0 ? 1 : 0);
-            LOG_DBG("pin_or_not = %d line = %d row = %d z = %d b = %d a = %d",pin_or_not,line,row,z,b,a);
-#if !defined(CONFIG_PRINTER_PREDICTION_TIMING)
-            data->timing_tri = false;
-            while (!data->timing_tri)
+            uint8_t x_coordinate = (((z) * 24) + ((row / 4) % 24));
+            /*in that time, program will check this coordinate in buf or not*/
+            /*desc struct define x and y, this is buff start*/
+            /*but not in buffs data, will choice pixel frime,if mono01*/
+            /*do nothing, but if mono10, will print color to paper*/
+            /*check this coordinate on buff*/
+            if ((x_coordinate >= x && x_coordinate < (desc->width + x)) && line >= y && line <(line_num))
             {
-                /*time out init*/
-                k_sleep(K_USEC(5));
+                /*in buff*/
+                pin_or_not = check_buff_bit(x_coordinate,x,line,y,cow_num,buf_ptr) ? format : (!format) & 0x1;
             }
+            else
+            {
+                /*not in buff*/
+                pin_or_not = (!format) & 0x1;
+            }
+            LOG_DBG("pin_or_not = %d line = %d row = %d x_coordinate =%d",pin_or_not,line,row,x_coordinate);
+#if !defined(CONFIG_PRINTER_PREDICTION_TIMING)
+            if (check_triger_timeout(&data->timing_tri))goto exit;
 #endif // 
             switch (z)
             {
@@ -399,30 +473,22 @@ static int m150ii_printer_write(const struct device *dev,
 #endif
         }
         /*one line last point*/
-        data->timing_tri = false;
-        while (!data->timing_tri)
-        {
-            /*time out init*/
-            k_sleep(K_USEC(10));
-        }
+        if (check_triger_timeout(&data->timing_tri))goto exit;
         /*line form 0 to height*/
     }
-    while (!data->res_tri)
-    {
-        /*time out init*/
-        k_sleep(K_USEC(10));
-    }
+    if (check_triger_timeout(&data->res_tri))goto exit;
     /*clean handle*/
+    LOG_INF("write ok");
     exit:
-    gpio_pin_set_dt(&cfg->motor_c,0);
-    gpio_pin_set_dt(&cfg->ps_a,0);
-    gpio_pin_set_dt(&cfg->ps_b,0);
-    gpio_pin_set_dt(&cfg->ps_c,0);
-    gpio_pin_set_dt(&cfg->ps_d,0);
-    gpio_pin_interrupt_configure_dt(&cfg->res_d,
-                                GPIO_INT_DISABLE);
-    gpio_pin_interrupt_configure_dt(&cfg->tim_d,
-                                GPIO_INT_DISABLE);
+    ret |= gpio_pin_set_dt(&cfg->motor_c,0);
+    ret |= gpio_pin_set_dt(&cfg->ps_a,0);
+    ret |= gpio_pin_set_dt(&cfg->ps_b,0);
+    ret |= gpio_pin_set_dt(&cfg->ps_c,0);
+    ret |= gpio_pin_set_dt(&cfg->ps_d,0);
+    ret |= gpio_pin_interrupt_configure_dt(&cfg->res_d,
+                                    GPIO_INT_DISABLE);
+    ret |= gpio_pin_interrupt_configure_dt(&cfg->tim_d,
+                                    GPIO_INT_DISABLE);
     return ret;
 }
 

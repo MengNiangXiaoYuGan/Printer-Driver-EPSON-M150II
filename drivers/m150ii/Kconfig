@@ -6,6 +6,17 @@ menuconfig EPSON_M150II
 	  Enable epson m150ii printer support
 if EPSON_M150II
 
+config PRINTER_FRAME_FORMAT_REVERSED
+	bool "printer frame format reversed"
+	default n
+	help
+	"Most devices use big-endian buffer layouts, 
+	meaning the high-order byte is at the smaller coordinate position 
+	(aligned along the X-axis in the byte direction). 
+	If you need to switch to little-endian, 
+	where the low-order byte is at the smaller coordinate position, 
+	just turn on this option."
+
 config PRINTER_PREDICTION_TIMING
 	bool "printer timing use singel edge predict timing"
 	default n

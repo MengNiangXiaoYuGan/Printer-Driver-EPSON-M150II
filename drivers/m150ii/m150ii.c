@@ -264,10 +264,13 @@ static inline bool check_buff_bit (uint8_t x_coordinate, uint8_t x_offset, uint1
     uint8_t xs = x_coordinate - x_offset;
     uint16_t ys = y_coordinate - y_offset;
 
+#if defined(CONFIG_PRINTER_FRAME_FORMAT_REVERSED)
+    /*if won to use low byte first*/
+    uint8_t bit_offset = xs % 8;
+#else
     /*all firme is Big-endian*/
     uint8_t bit_offset = 7 - (xs % 8);
-    /*if won to use low byte first*/
-    // uint8_t bit_offset = xs % 8;
+#endif // CONFIG_PRINTER_FRAME_FORMAT_REVERSED
     /*buff coordinate equal buff_ptr [(ys * buff_width) + (xs / 8)] >> (bit offset)*/
     if (buff_ptr[((ys * buff_width) + (xs / 8))] >> bit_offset & 0x1)
     {

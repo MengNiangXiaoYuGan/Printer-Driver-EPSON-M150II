@@ -17,6 +17,19 @@ config PRINTER_FRAME_FORMAT_REVERSED
 	where the low-order byte is at the smaller coordinate position, 
 	just turn on this option."
 
+menuconfig M150II_PRINTER_CHARACTER
+	bool "printer can printe character like printf or printk"
+	default y
+	help
+	"Printers are meant for printing. Enabling this option will 
+	additionally compile a function "m150_printf", which users 
+	can use to treat the printer as a terminal to output characters. 
+	More information can be found inside this list."
+
+if M150II_PRINTER_CHARACTER
+rsource "print_character/Kconfig"
+endif
+
 config PRINTER_PREDICTION_TIMING
 	bool "printer timing use singel edge predict timing"
 	default n

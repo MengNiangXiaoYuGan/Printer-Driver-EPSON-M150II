@@ -1,0 +1,16 @@
+config M150II_USE_FONT_ASCII_5X7_FONT
+	bool "use ascii 5x7 micro font"
+	default y
+	help
+	"this is font of ASCII 32 (' ') to ASCII 126 ('~')
+	beyond this edge code all display black squred"
+
+config M150II_CHARACTER_BUFF_SIZE
+	hex "printer character buff size"
+	default 0x200
+	range 0x10 0x10000000
+	help
+	"this option use for define character buff size
+	if wont to printer more char once,
+	may you use at list 0x1000(4k)
+	most time default value is the best"

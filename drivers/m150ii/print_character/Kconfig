@@ -7,7 +7,7 @@ config M150II_USE_FONT_ASCII_5X7_FONT
 
 config M150II_CHARACTER_BUFF_SIZE
 	hex "printer character buff size"
-	default 0x200
+	default 0x400
 	range 0x10 0x10000000
 	help
 	"this option use for define character buff size

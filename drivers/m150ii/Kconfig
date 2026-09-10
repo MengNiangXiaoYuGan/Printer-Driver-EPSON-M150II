@@ -1,9 +1,9 @@
 menuconfig EPSON_M150II
-	bool "epson m150ii pin printer"
+	bool "epson m150ii micro dot printer"
 	default n
 	depends on GPIO && DISPLAY
 	help
-	  Enable epson m150ii printer support
+	"Enable epson m150ii printer support"
 if EPSON_M150II
 
 config PRINTER_FRAME_FORMAT_REVERSED

@@ -13,9 +13,11 @@
 /*add dependency*/
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/display.h>
+#include <zephyr/logging/log.h>
 #include <stdio.h>
 #include <stdarg.h>
 
+LOG_MODULE_DECLARE(M150II, CONFIG_EPSON_M150II_LOG_LEVEL);
 /*
  *  @brief this function use for format data, 
  *      chanslate to drow buff, and printer to
@@ -32,6 +34,7 @@ int m150_printf (const struct device *dev, enum font_type_t font, char *format, 
     if (!device_is_ready(dev))
     {
         /*error : device is not ready*/
+        LOG_ERR("Device is not ready");
         return -ENODEV;
     }
     int ret = 0;
@@ -44,6 +47,7 @@ int m150_printf (const struct device *dev, enum font_type_t font, char *format, 
     if (buff_count < 0)
     {
         /*log error : write buff faile*/
+        LOG_ERR("buff size to small");
         ret = -ENOMEM;
         return ret;
     }
@@ -61,6 +65,7 @@ int m150_printf (const struct device *dev, enum font_type_t font, char *format, 
 #endif
     default:
         /*error : no this type*/
+        LOG_ERR("not this font type");
         ret = -ENOTSUP;
         return ret;
         break;
@@ -113,8 +118,6 @@ int m150_printf (const struct device *dev, enum font_type_t font, char *format, 
                 {
                     char align_offset_bit = (cow_conter * font_width) % 8; /*x coordinate of 8*/
                     char align_offset_byte = (cow_conter * font_width) / 8; /*x coordinate mine 8*/
-                    printk("infor : line = %d aligyte = %d , align_bits = %d \n",line_conter + a,align_offset_byte,align_offset_bit);
-                    k_msleep(1);
                     if (align_offset_bit)
                     {
                         buf[((line_conter + a) * 12) + align_offset_byte] |= ascii_5x7_font[buff[i] - ASCII_5X7_FONT_MIN_CODE][a] >> align_offset_bit;
@@ -129,6 +132,7 @@ int m150_printf (const struct device *dev, enum font_type_t font, char *format, 
 #endif
             default:
                 /*no this type*/
+                LOG_ERR("not this font type");
                 ret = -ENOTSUP;
                 goto exit;
                 break;
@@ -148,6 +152,7 @@ int m150_printf (const struct device *dev, enum font_type_t font, char *format, 
     if (ret)
     {
         /*error code : cant not display to printer*/
+        LOG_ERR("cant not write printer code %d",ret);
     }
     exit:
     return ret;
